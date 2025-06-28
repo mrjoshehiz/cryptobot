@@ -1,13 +1,16 @@
-from flask import Flask
-from threading import Thread
-from telegram import Bot
-from telegram.constants import ParseMode
+import telegram
 import os
-import time
 import random
+import asyncio
+from telegram.constants import ParseMode
+from flask import Flask
+
+app = Flask(__name__)
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 GROUP_ID = int(os.environ["GROUP_ID"])
+
+bot = telegram.Bot(token=BOT_TOKEN)
 
 QUESTIONS = [
     "Hi everyone! Just curious, what's the main utility of this token?",
@@ -24,38 +27,31 @@ QUESTIONS = [
 
 SEND_INTERVAL = 900  # 15 mins
 
-bot = Bot(token=BOT_TOKEN)
-
-# Flask web server to keep alive
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "✅ Bot is alive!"
-
-def run_web():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = Thread(target=run_web)
-    t.start()
-
-def send_typing_effect(chat_id):
+async def send_typing_effect(chat_id):
     for _ in range(random.randint(2, 4)):
-        bot.send_chat_action(chat_id=chat_id, action="typing")
-        time.sleep(random.randint(2, 5))
+        await bot.send_chat_action(chat_id=chat_id, action="typing")
+        await asyncio.sleep(random.randint(2, 5))
 
-def send_random_question():
+async def send_random_question():
     question = random.choice(QUESTIONS)
-    send_typing_effect(GROUP_ID)
-    bot.send_message(chat_id=GROUP_ID, text=question, parse_mode=ParseMode.MARKDOWN)
+    print("Sending question:", question)
+    await send_typing_effect(GROUP_ID)
+    await bot.send_message(chat_id=GROUP_ID, text=question, parse_mode=ParseMode.MARKDOWN)
 
-keep_alive()
+async def run_bot():
+    while True:
+        try:
+            await send_random_question()
+            await asyncio.sleep(SEND_INTERVAL)
+        except Exception as e:
+            print(f"Error: {e}")
+            await asyncio.sleep(30)
 
-while True:
-    try:
-        send_random_question()
-        time.sleep(SEND_INTERVAL)
-    except Exception as e:
-        print(f"Error: {e}")
-        time.sleep(30)
+@app.route("/")
+def index():
+    return "Bot is running!"
+
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.create_task(run_bot())
+    app.run(host="0.0.0.0", port=8080)
